@@ -12,6 +12,7 @@ using std::string;
 #include <queue>
 
 #include <alsa/asoundlib.h>
+#include "../include/AudioEngine.h"
 
 
 AudioEngine::AudioEngine() {
