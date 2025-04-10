@@ -15,7 +15,7 @@ class AudioEngine {
 
 	struct WaveHeader {
 		char riff[4];
-		char chunk_size;
+		uint32_t chunk_size;
 		char wave[4];
 		char fmt[4];
 		
