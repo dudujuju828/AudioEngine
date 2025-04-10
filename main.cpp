@@ -1,12 +1,25 @@
+
 #include <iostream>
+
+#include <string>
+using std::string;
+
 #include <chrono>
+#include <mutex>
 #include <thread>
+
 #include <fstream>
+#include <queue>
+
 #include <alsa/asoundlib.h>
 
 class AudioEngine {
 	static AudioEngine* s_instance;
 	snd_pcm_t* pcmHandle;
+	
+	bool audioThreadOn;
+	std::queue<std::string> audioQueue;
+	std::thread audioThread;
 
 	struct WaveHeader {
 		char riff[4];                // "RIFF"
@@ -25,6 +38,11 @@ class AudioEngine {
 	};
 
 	AudioEngine() {
+		audioThreadOn = true;
+		audioThread = std::thread([this]() {
+			monitorQueue();	
+		});
+
 		int err;
 
 		err = snd_pcm_open(&pcmHandle, "default", SND_PCM_STREAM_PLAYBACK, 0);
@@ -35,13 +53,28 @@ class AudioEngine {
 		snd_pcm_prepare(pcmHandle);
 	}
 	
-	void playWavFile(const char* filename) {
+	void monitorQueue() {
+		while (audioThreadOn) {
+			if (audioQueue.size() > 0) {
+				string filename = audioQueue.front();
+				playWavFile(filename);
+				audioQueue.pop();
+			} else {
+				std::cout << "Waiting for audio.\n";
+			}
+		}	
+	}
+	
+	void playWavFile(string filename_string) {
+		const char * filename = filename_string.c_str();	
 		snd_pcm_hw_params_t* params;
 		std::ifstream file(filename, std::ios::binary);
+
     	if (!file.is_open()) {
 			std::cerr << "Unable to open file: " << filename << "\n";
         	return; 
     	}
+
 		WaveHeader header;
 		file.read(reinterpret_cast<char*>(&header), sizeof(header));
 	    if (strncmp(header.riff, "RIFF", 4) || strncmp(header.wave, "WAVE", 4)) {
@@ -86,13 +119,12 @@ class AudioEngine {
     	char buffer[bufferSize];
 
     	while (!file.eof()) {
- 		     file.read(buffer, bufferSize);
+		    file.read(buffer, bufferSize);
 	        std::streamsize bytesRead = file.gcount();
  		    snd_pcm_writei(pcmHandle, buffer, bytesRead / (header.bitsPerSample / 8 * header.numChannels));
     	}
 
     	file.close();
-
 	}
 	
 public:
@@ -102,11 +134,8 @@ public:
 	}
 	
 	void playWav(const char* filename) {
-		std::thread playback(&AudioEngine::playWavFile, this, filename);
-		playback.detach();
+		audioQueue.push(filename);	
 	}
-	
-
 };
 
 AudioEngine* AudioEngine::s_instance = nullptr;
@@ -114,9 +143,8 @@ AudioEngine* AudioEngine::s_instance = nullptr;
 int main() {
 	AudioEngine* myEngine = AudioEngine::getInstance();
 	myEngine->playWav("example.wav");
-	myEngine->playWav("secondexample.wav");
-	std::this_thread::sleep_for(std::chrono::seconds(1));
-	
+
+	std::this_thread::sleep_for(std::chrono::seconds(2));
 
     return 0;
 }
